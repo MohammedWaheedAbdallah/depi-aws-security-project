@@ -2,13 +2,11 @@
 
 ## 1. Project overview
 
-This repository builds the DEPI Mini Project 1 platform with Terraform in `us-east-1`.
-The intended public entry point is CloudFront; its creation is currently blocked by AWS account verification. A guarded Terraform retry on 11 October 2026 returned `403 AccessDenied` (AWS Request ID `2b579a67-d9db-46f1-a0ac-a382b36366b6`). The ALB, EC2 servers, RDS, and EFS are deployed in the VPC design described below, and direct ALB access returns the intended 403 response.
-There are no SSH keys and no public IP addresses on compute resources; Session Manager uses private VPC endpoints.
-S3 buckets are private, encrypted, versioned, and protected by transport-security policies.
-CloudTrail, VPC Flow Logs, EventBridge/Lambda remediation, peering, and AWS Backup are included.
-
-For a fresh AWS account, deploy from `deployments/new-account` with a separate state and an explicit account-ID guard. Start with CloudFront disabled, then enable it after the core stack works. CloudWatch monitoring remains enabled throughout.
+This Terraform project builds a secure web platform in `us-east-1`.
+Two private EC2 app servers sit behind an ALB, with private RDS and EFS storage.
+Session Manager provides access without public instance IPs; a tools VPC connects by peering.
+CloudTrail, Flow Logs, alarms, a budget, remediation, and backup are included.
+CloudFront is the intended HTTPS entry point, but AWS account verification still blocks it; direct ALB access correctly returns 403.
 
 ## 2. Architecture diagram
 
@@ -55,42 +53,32 @@ The public route table has `0.0.0.0/0` to the Internet Gateway. The private app 
 | Auto-remediation | EventBridge + least-privilege Lambda + SNS | Public SSH/RDP rules left open |
 | Backup immutability | AWS Backup Governance vault lock | Early recovery-point deletion |
 
-CloudWatch metric alarms, dashboard, CloudTrail logs, and VPC Flow Logs are managed by Terraform. The CloudFront test requires a successful second-stage apply.
-
 ## 5. Prerequisites
 
-- Terraform `>= 1.6` and AWS provider `~> 5.0`.
-- AWS CLI temporary-credential profile configured for the new account and `us-east-1`.
-- Permissions to manage IAM, VPC, EC2, ALB, CloudFront, S3, RDS, EFS, CloudTrail, EventBridge, Lambda, AWS Backup, Budgets, and Secrets Manager.
-- A confirmed email address for the budget and SNS subscriptions.
-- An activated account with a verified payment method and the account owner's permission to run billable resources.
-- Never commit `terraform.tfstate`, plans, credentials, or `.tfvars` files.
+Terraform `>= 1.6`, AWS CLI, an authorized AWS profile with permissions for the services in this project, and a confirmed alert email. Use `us-east-1` and keep state, `.tfvars`, plans, and credentials out of Git.
 
 ## 6. How to deploy
 
-Follow the complete [new-account deployment guide](docs/new-account-deployment.md). Run Terraform only from `deployments/new-account`, never from `terraform/` for the fresh account. The guide covers profile setup, account verification, the core plan, CloudFront, testing, and cleanup. The saved state and plans under `terraform/` belong to a different deployment and must not be imported or reused.
-
-Confirm the SNS email subscription after apply. The budget action may attach a deny policy to the developer group after the threshold, but it is **not** a spending cap or an automatic resource shutdown.
+From `deployments/new-account`, copy `terraform.tfvars.example` to `terraform.tfvars` and set `expected_account_id`, `alert_email`, and `owner`. Select the matching AWS profile and confirm the account ID with `aws sts get-caller-identity` before running `terraform init`, `terraform plan`, and `terraform apply`. Confirm the SNS email. CloudFront is disabled by default until AWS permits distribution creation.
 
 ## 7. How to verify
 
-Run the tests in [docs/testing.md](docs/testing.md). The most important expected results are:
+The ten required tests, actual results, and evidence are in [docs/testing.md](docs/testing.md):
 
-1. CloudFront URL loads over HTTPS; the ALB DNS name returns 403.
-2. EC2 instances have no public IP and open in Session Manager.
-3. A file written through EFS on server A is visible on server B.
-4. RDS is not publicly accessible but accepts port 3306 from the app SG.
-5. S3 public access and insecure transport attempts are refused.
-6. Adding `0.0.0.0/0:22` to the app SG is removed by Lambda and produces an SNS message.
-7. The tools-VPC instance curls a private app-server IP through the peering connection.
-8. Backup vault lock refuses early recovery-point deletion.
-9. CloudWatch dashboard receives metrics and the alarm email path can be tested.
-
-If CloudFront returns an account-verification 403, preserve the error and ask AWS Support to verify the **new** account. Do not bypass the restriction. CloudWatch dashboard and alarm tests can be performed before CloudFront is enabled.
+1. Direct ALB request: 403 — captured.
+2. CloudFront HTTPS page: blocked by AWS account verification.
+3. SSH to private EC2: timeout and Flow Logs `REJECT` — captured from the tools instance.
+4. Laptop to RDS: timeout — captured.
+5. App server to RDS: TCP/3306 connection — captured; MySQL login not tested.
+6. Public S3 object attempt: refusal not yet captured.
+7. Public SSH rule: Lambda removal and email not yet tested.
+8. Stop nginx: unhealthy target, working site, and alarm email not yet tested.
+9. Tools VPC to app server: page returned — captured.
+10. Locked-vault recovery-point deletion: not yet tested.
 
 ## 8. Screenshots
 
-The following are **redacted copies** from the new account, organized by task. Click each filename for the full image. Each caption states only what that screenshot visibly proves; the [evidence review](docs/evidence-review-2026-10-10.md) lists the missing tests. Original images were preserved and must not be uploaded unredacted.
+Screenshots are grouped by task. Each caption describes what the image shows; missing evidence is listed in the [test results](docs/testing.md).
 
 | Screenshot | Caption |
 |---|---|
@@ -131,7 +119,7 @@ The following are **redacted copies** from the new account, organized by task. C
 | [CloudTrail logging](screenshots/14-cloudtrail/14-cloudtrail-trail-logging.png) | Multi-region trail is Logging to its S3 bucket. |
 | [CloudTrail event identity](screenshots/14-cloudtrail/14-cloudtrail-create-event-identity-ip-time.png) | CreateTrail event includes user identity, source IP, and timestamp. |
 | [SSH flow REJECT](screenshots/15-flowlogs/15-tools-to-app-ssh-reject.png) | Tools-to-app TCP/22 flow was rejected. |
-| [SSH timeout](screenshots/15-network-tests/15-tools-ssh-app-timeout.png) | SSH from tools to app-a timed out; an outside-laptop test is still missing. |
+| [SSH timeout](screenshots/15-network-tests/15-tools-ssh-app-timeout.png) | SSH from tools to app-a timed out. |
 | [CloudWatch alarm states](screenshots/16-monitoring/16-five-alarms-states.png) | Five alarms exist; three remain in Insufficient data state. |
 | [CPU alarm SNS action](screenshots/16-monitoring/16-cpu-alarm-sns-action.png) | CPU alarm is OK and configured to notify the `depi-sec-alerts` SNS topic. |
 | [Lambda EventBridge trigger](screenshots/17-automation/17-lambda-eventbridge-trigger.png) | Remediation Lambda has an EventBridge trigger; no live remediation test yet. |
@@ -146,11 +134,11 @@ The following are **redacted copies** from the new account, organized by task. C
 
 ## 9. Cost notes
 
-The ALB and interface endpoints are billable while they exist. CloudFront, RDS, EFS, backup storage, and S3 can also incur charges. Check Cost Explorer and Bills during testing and after cleanup; the $10 budget only alerts and applies the specified IAM policy. The current RDS screenshot shows MySQL 8.0.46 with Extended Support enabled: [AWS lists 1 August 2026 as the start of its extra-support pricing](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/MySQL.Concepts.VersionMgmt.html), so check the actual bill promptly. The configuration adds three SSM endpoints to the tools VPC so the monitoring instance can use Session Manager privately. The private NACL includes an ephemeral return rule for S3 gateway-endpoint traffic while retaining the explicit SSH deny.
+ALB, EC2, RDS, EFS, and interface endpoints can incur charges while running. The $10 budget is an alert, not a spending cap. **Actual Cost Explorer total: pending billing update after cleanup.** RDS MySQL 8.0.46 currently has Extended Support enabled, which may add cost.
 
 ## 10. How to destroy
 
-Take final screenshots before cleanup. From `deployments/new-account`, stop new backup selections if necessary, review any S3 object versions and recovery points, and inspect the destroy plan carefully:
+Save final screenshots first. Empty both versioned S3 buckets, review any locked backup recovery points, then check the destroy plan from `deployments/new-account` with the correct AWS profile:
 
 ```powershell
 cd .\deployments\new-account
@@ -158,11 +146,9 @@ terraform plan -destroy -out destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
-Use the account guard and profile checks in the [deployment guide](docs/new-account-deployment.md) before any destroy. A versioned S3 bucket or locked backup vault may prevent a complete destroy; inspect the exact error and remaining resources rather than removing state entries. Check the console for ALB, EC2, RDS, EFS mount targets, endpoints, CloudFront, and S3 remnants.
+After applying the reviewed plan, confirm the Console is empty and record the actual Cost Explorer total when billing data appears. A locked backup recovery point can prevent vault deletion and must be reviewed before destroying. Cleanup has **not** been run yet.
 
 ## 11. What I learned
-
-Draft reflection prompts based on this build; **rewrite them in your own words before submission** as the brief requires:
 
 1. I learned that Terraform makes the network, identity, storage, and recovery design repeatable.
 2. I learned that a subnet is public because of its route to an Internet Gateway, not its name.
@@ -177,8 +163,6 @@ Draft reflection prompts based on this build; **rewrite them in your own words b
 
 ## 12. Known limitations
 
-- CloudFront creation depends on AWS Support verifying CloudFront access for the new account; the 11 October retry still failed with `AccessDenied` and created no distribution.
-- The ALB origin uses HTTP inside AWS; production should use HTTPS to the origin as well.
-- The Terraform configuration deliberately selects the standard Amazon Linux 2023 image rather than the Minimal image, because the standard image includes the SSM Agent required for private Session Manager access.
-- Local state contains sensitive values such as the generated database password. It is ignored by Git for this lab; production should use encrypted remote state with locking.
-- Terraform local state and saved plans can contain sensitive values. The fresh-account root keeps its state separate from `terraform/`; use encrypted remote state with locking for production.
+- CloudFront creation failed with AWS account-verification `AccessDenied` on 11 October 2026; no distribution exists.
+- Tests 6–8 and 10 still need end-to-end evidence; cleanup and the final Cost Explorer total are pending.
+- The ALB origin currently uses HTTP, and Terraform state is local. Production would require HTTPS to the origin and encrypted remote state.
