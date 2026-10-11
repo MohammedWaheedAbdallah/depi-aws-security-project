@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars in this folder after the new account is active.
+expected_account_id = "123456789012" # Replace with the NEW account's 12-digit ID.
+alert_email         = "you@example.com"
+owner               = "Project Team"
+region              = "us-east-1"
+enable_cloudfront   = false # Change to true only after core deployment succeeds.
+enable_scheduled_backups = false # Change to true only for the controlled backup test.

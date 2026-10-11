@@ -1,0 +1,12 @@
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+*.tfplan
+*.zip
+*.backup
+*.disabled
+screenshots/**/Screenshot *.png
+plan.tfplan
+destroy.tfplan
+local-evidence-archive/
