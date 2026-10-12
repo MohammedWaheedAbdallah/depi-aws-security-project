@@ -70,11 +70,11 @@ The ten required tests, actual results, and evidence are in [docs/testing.md](do
 3. SSH to private EC2: timeout and Flow Logs `REJECT` — captured from the tools instance.
 4. Laptop to RDS: timeout — captured.
 5. App server to RDS: TCP/3306 connection — captured; MySQL login not tested.
-6. Public S3 object attempt: refusal not yet captured.
-7. Public SSH rule: Lambda removal and email not yet tested.
-8. Stop nginx: unhealthy target, working site, and alarm email not yet tested.
+6. Public S3 object attempt: refused by Block Public Access — captured.
+7. Public SSH rule: Lambda removed it within a minute; SNS email received — captured.
+8. Stop nginx on app-a: target became unhealthy, ALB still returned HTTP 200 through app-b, and alarm email arrived — captured. CloudFront HTTPS remains unavailable.
 9. Tools VPC to app server: page returned — captured.
-10. Locked-vault recovery-point deletion: not yet tested.
+10. Locked-vault recovery-point deletion: refused — captured. The test backup was then removed and the Governance lock restored.
 
 ## 8. Screenshots
 
@@ -108,33 +108,43 @@ Screenshots are grouped by task. Each caption describes what the image shows; mi
 | [Encrypted EBS volumes](screenshots/09-efs/09-ebs-encrypted-volumes.png) | All three attached EC2 volumes show Encryption: Encrypted. |
 | [gp3 EBS volumes](screenshots/09-efs/09-ebs-gp3-volumes.png) | The three EC2 volumes are gp3. |
 | [S3 Block Public Access](screenshots/10-s3/10-s3-block-public-access.png) | Application bucket has Block All Public Access On. |
+| [S3 public attempt refused](screenshots/10-s3/10-s3-public-attempt-refused.png) | Console refused to make the test object public. |
 | [Encrypted RDS](screenshots/11-rds/11-rds-encrypted.png) | MySQL RDS instance is Available and storage encryption is enabled. |
 | [RDS internet gateway disabled](screenshots/11-rds/11-rds-internet-gateway-disabled.png) | RDS connectivity page shows Internet access gateway Disabled. |
 | [RDS not public](screenshots/11-rds/11-rds-not-publicly-accessible.png) | RDS form shows Not publicly accessible selected; no modification was made. |
 | [App-to-RDS TCP reachability](screenshots/11-rds/11-app-b-to-rds-3306-reachable.png) | App-b can open TCP/3306 to RDS; this is not a MySQL login test. |
 | [Laptop-to-RDS timeout](screenshots/11-rds/11-laptop-to-rds-3306-timeout.png) | Browser on the laptop times out connecting to the RDS endpoint at TCP/3306. |
 | [Two healthy ALB targets](screenshots/12-alb/12-alb-two-healthy-targets.png) | Target group baseline: two registered targets Healthy. |
+| [ALB fault-injection overview](screenshots/12-alb/12-alb-one-unhealthy-during-test.png) | Target-group summary during the controlled nginx outage: one target Healthy, one Unhealthy. |
+| [One unhealthy ALB target](screenshots/12-alb/12-alb-target-health-detail.png) | During the controlled nginx stop, app-a was Unhealthy while app-b stayed Healthy. |
 | [Direct ALB 403](screenshots/13-cloudfront/13-alb-direct-403.png) | Direct ALB request returns the expected Forbidden message. |
 | [ALB listener rules](screenshots/13-cloudfront/13-alb-listener-rules.png) | Matching origin-verification header forwards; default rule returns 403. Header value masked. |
 | [CloudTrail logging](screenshots/14-cloudtrail/14-cloudtrail-trail-logging.png) | Multi-region trail is Logging to its S3 bucket. |
 | [CloudTrail event identity](screenshots/14-cloudtrail/14-cloudtrail-create-event-identity-ip-time.png) | CreateTrail event includes user identity, source IP, and timestamp. |
 | [SSH flow REJECT](screenshots/15-flowlogs/15-tools-to-app-ssh-reject.png) | Tools-to-app TCP/22 flow was rejected. |
 | [SSH timeout](screenshots/15-network-tests/15-tools-ssh-app-timeout.png) | SSH from tools to app-a timed out. |
-| [CloudWatch alarm states](screenshots/16-monitoring/16-five-alarms-states.png) | Five alarms exist; three remain in Insufficient data state. |
+| [Initial CloudWatch alarm states](screenshots/16-monitoring/16-five-alarms-states.png) | Initial alarm states before monitoring fixes and metric data arrived. |
 | [CPU alarm SNS action](screenshots/16-monitoring/16-cpu-alarm-sns-action.png) | CPU alarm is OK and configured to notify the `depi-sec-alerts` SNS topic. |
-| [Lambda EventBridge trigger](screenshots/17-automation/17-lambda-eventbridge-trigger.png) | Remediation Lambda has an EventBridge trigger; no live remediation test yet. |
+| [ALB unhealthy alarm](screenshots/16-monitoring/16-alb-unhealthy-alarm.png) | CloudWatch entered ALARM after app-a failed health checks. |
+| [ALB alarm email](screenshots/16-monitoring/16-alb-alarm-email.png) | SNS delivered the ALB alarm email. Account ID masked. |
+| [Lambda EventBridge trigger](screenshots/17-automation/17-lambda-eventbridge-trigger.png) | Remediation Lambda has an EventBridge trigger. |
 | [Ingress event pattern](screenshots/17-automation/17-eventbridge-authorize-ingress-pattern.png) | Enabled EventBridge rule matches `AuthorizeSecurityGroupIngress`. |
+| [Temporary public SSH rule](screenshots/17-automation/17-ssh-rule-added.png) | Controlled test briefly added TCP/22 from `0.0.0.0/0` to the private app SG. |
+| [SSH rule removed](screenshots/17-automation/17-ssh-rule-auto-removed.png) | Lambda removed the temporary rule; only the three original inbound rules remain. |
+| [Remediation email](screenshots/17-automation/17-remediation-sns-email.png) | SNS confirmed removal of the public SSH rule. Address and unsubscribe link masked. |
 | [VPC Flow Log active](screenshots/17-testing/17-vpc-flow-log-active.png) | VPC Flow Log is active and sends events to CloudWatch Logs. |
 | [General port-22 rejects](screenshots/17-testing/17-vpc-port22-rejects.png) | Log query shows port-22 rejects; the exact tools-to-app flow is shown above. |
 | [VPC peering](screenshots/18-peering/18-peering-active-route-tables.png) | Peering connection is Active and referenced by route tables in both VPCs. |
 | [Tools-side peering route](screenshots/18-peering/18-tools-route-to-app-vpc.png) | Tools subnet routes `10.0.0.0/16` through the active peering connection. |
 | [Tools-to-app curl](screenshots/18-peering/18-tools-curl-app-success.png) | HTTP from tools to app-a returned the application page over peering. |
-| [Governance vault lock](screenshots/19-backup/19-backup-governance-lock.png) | Backup vault lock is in Governance mode; there are zero recovery points so far. |
-| [Daily backup rule](screenshots/19-backup/19-backup-daily-rule.png) | Plan has a daily rule and 30-day retention; no completed backup is proved. |
+| [Governance vault lock](screenshots/19-backup/19-backup-governance-lock.png) | Backup vault lock is in Governance mode. |
+| [Test recovery point](screenshots/19-backup/19-backup-recovery-point-locked.png) | A completed test EBS recovery point was inside the locked vault. |
+| [Deletion refused](screenshots/19-backup/19-backup-delete-denied.png) | AWS refused to delete that recovery point while the vault was locked. |
+| [Daily backup rule](screenshots/19-backup/19-backup-daily-rule.png) | Plan has a daily rule and 30-day retention; scheduled selection is disabled. |
 
 ## 9. Cost notes
 
-ALB, EC2, RDS, EFS, and interface endpoints can incur charges while running. The $10 budget is an alert, not a spending cap. **Actual Cost Explorer total: pending billing update after cleanup.** RDS MySQL 8.0.46 currently has Extended Support enabled, which may add cost.
+ALB, EC2, RDS, EFS, and interface endpoints incur charges while running. The $10 budget is an alert, not a spending cap. A card charge of about $11 was reported on 12 October; Cost Explorer had not yet attributed it by service. The final total remains pending billing refresh and cleanup.
 
 ## 10. How to destroy
 
@@ -164,5 +174,6 @@ After applying the reviewed plan, confirm the Console is empty and record the ac
 ## 12. Known limitations
 
 - CloudFront creation failed with AWS account-verification `AccessDenied` on 11 October 2026; no distribution exists.
-- Tests 6–8 and 10 still need end-to-end evidence; cleanup and the final Cost Explorer total are pending.
+- CloudFront test 2 and its required screenshot are blocked by AWS account verification. The public HTTPS portion of test 8 cannot be shown without CloudFront; ALB failover and alerting were verified.
+- Infrastructure cleanup and the final Cost Explorer total are pending. The temporary Backup recovery point and S3 test object were removed; the Backup Governance lock was restored.
 - The ALB origin currently uses HTTP, and Terraform state is local. Production would require HTTPS to the origin and encrypted remote state.
