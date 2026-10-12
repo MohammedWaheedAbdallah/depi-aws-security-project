@@ -136,7 +136,10 @@ resource "aws_cloudwatch_metric_alarm" "alb_unhealthy" {
   statistic           = "Maximum"
   threshold           = 0
   alarm_actions       = [aws_sns_topic.alerts.arn]
-  dimensions          = { LoadBalancer = aws_lb.alb.arn_suffix }
+  dimensions = {
+    LoadBalancer = aws_lb.alb.arn_suffix
+    TargetGroup  = aws_lb_target_group.app_tg.arn_suffix
+  }
 }
 
 resource "aws_cloudwatch_metric_alarm" "rds_storage" {
@@ -149,7 +152,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage" {
   statistic           = "Average"
   threshold           = 2000000000
   alarm_actions       = [aws_sns_topic.alerts.arn]
-  dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.id }
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.identifier }
 }
 
 resource "aws_cloudwatch_log_metric_filter" "failed_login" {
@@ -190,14 +193,14 @@ resource "aws_cloudwatch_dashboard" "main" {
       {
         type = "metric", x = 0, y = 6, width = 12, height = 6,
         properties = {
-          metrics = [["AWS/ApplicationELB", "UnHealthyHostCount", "LoadBalancer", aws_lb.alb.arn_suffix]]
+          metrics = [["AWS/ApplicationELB", "UnHealthyHostCount", "LoadBalancer", aws_lb.alb.arn_suffix, "TargetGroup", aws_lb_target_group.app_tg.arn_suffix]]
           view    = "timeSeries", stacked = false, region = var.region, title = "ALB unhealthy hosts"
         }
       },
       {
         type = "metric", x = 0, y = 12, width = 12, height = 6,
         properties = {
-          metrics = [["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", aws_db_instance.mysql.id]]
+          metrics = [["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", aws_db_instance.mysql.identifier]]
           view    = "timeSeries", stacked = false, region = var.region, title = "RDS free storage"
         }
       },
