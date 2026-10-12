@@ -141,10 +141,11 @@ Screenshots are grouped by task. Each caption describes what the image shows; mi
 | [Test recovery point](screenshots/19-backup/19-backup-recovery-point-locked.png) | A completed test EBS recovery point was inside the locked vault. |
 | [Deletion refused](screenshots/19-backup/19-backup-delete-denied.png) | AWS refused to delete that recovery point while the vault was locked. |
 | [Daily backup rule](screenshots/19-backup/19-backup-daily-rule.png) | Plan has a daily rule and 30-day retention; scheduled selection is disabled. |
+| [Empty RDS Console after cleanup](screenshots/20-cleanup/20-rds-empty-after-destroy.png) | RDS Databases shows zero resources after Terraform destroy. |
 
 ## 9. Cost notes
 
-ALB, EC2, RDS, EFS, and interface endpoints incur charges while running. The $10 budget is an alert, not a spending cap. A card charge of about $11 was reported on 12 October; Cost Explorer had not yet attributed it by service. The final total remains pending billing refresh and cleanup.
+ALB, EC2, RDS, EFS, and interface endpoints incurred charges while running. The $10 budget was an alert, not a spending cap. A charge of about $11 was reported on 12 October; Cost Explorer had not yet attributed it by service. All project resources were destroyed on 12 October, but earlier usage may appear in billing later.
 
 ## 10. How to destroy
 
@@ -156,7 +157,7 @@ terraform plan -destroy -out destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
-After applying the reviewed plan, confirm the Console is empty and record the actual Cost Explorer total when billing data appears. A locked backup recovery point can prevent vault deletion and must be reviewed before destroying. Cleanup has **not** been run yet.
+Cleanup was completed on 12 October 2026 in the project account. The initial destroy removed 123 Terraform-managed resources but stopped at the versioned CloudTrail log bucket; its project-log versions were emptied and a second destroy removed the remaining two resources. Terraform state is empty. AWS checks found no active project EC2 instances, EBS volumes or snapshots, ALB, RDS, EFS, VPC endpoints, project S3 buckets, or Backup vault. The [RDS Console screenshot](screenshots/20-cleanup/20-rds-empty-after-destroy.png) shows zero databases. Record the final billed amount when Cost Explorer updates.
 
 ## 11. What I learned
 
@@ -175,5 +176,5 @@ After applying the reviewed plan, confirm the Console is empty and record the ac
 
 - CloudFront creation failed with AWS account-verification `AccessDenied` on 11 October 2026; no distribution exists.
 - CloudFront test 2 and its required screenshot are blocked by AWS account verification. The public HTTPS portion of test 8 cannot be shown without CloudFront; ALB failover and alerting were verified.
-- Infrastructure cleanup and the final Cost Explorer total are pending. The temporary Backup recovery point and S3 test object were removed; the Backup Governance lock was restored.
+- The final Cost Explorer total is pending billing refresh. Project infrastructure has been destroyed; the site is no longer live.
 - The ALB origin currently uses HTTP, and Terraform state is local. Production would require HTTPS to the origin and encrypted remote state.
