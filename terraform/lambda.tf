@@ -27,6 +27,7 @@ resource "aws_lambda_function" "remediator" {
   role             = aws_iam_role.lambda_role.arn
   handler          = "remediation.lambda_handler"
   runtime          = "python3.12"
+  timeout          = 30
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
   environment {

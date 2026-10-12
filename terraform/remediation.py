@@ -1,6 +1,7 @@
 import os
 
 import boto3
+from botocore.exceptions import ClientError
 
 
 def lambda_handler(event, context):
@@ -12,6 +13,7 @@ def lambda_handler(event, context):
     sg_id = request.get("groupId")
     permissions = request.get("ipPermissions", {}).get("items", [])
     if not sg_id:
+        print("Remediation ignored: security group ID missing")
         return {"status": "ignored", "reason": "security group id missing"}
 
     revoked = []
@@ -29,17 +31,23 @@ def lambda_handler(event, context):
         if not public_ranges:
             continue
 
-        ec2.revoke_security_group_ingress(
-            GroupId=sg_id,
-            IpPermissions=[
-                {
-                    "IpProtocol": permission.get("ipProtocol", "tcp"),
-                    "FromPort": from_port,
-                    "ToPort": to_port,
-                    "IpRanges": public_ranges,
-                }
-            ],
-        )
+        try:
+            ec2.revoke_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=[
+                    {
+                        "IpProtocol": permission.get("ipProtocol", "tcp"),
+                        "FromPort": from_port,
+                        "ToPort": to_port,
+                        "IpRanges": public_ranges,
+                    }
+                ],
+            )
+        except ClientError as error:
+            if error.response["Error"]["Code"] == "InvalidPermission.NotFound":
+                print(f"Remediation already complete: {sg_id}:{from_port}")
+                continue
+            raise
         revoked.append(f"{sg_id}:{from_port}")
 
     if revoked:
@@ -49,4 +57,6 @@ def lambda_handler(event, context):
             Message="Removed public SSH/RDP rule(s): " + ", ".join(revoked),
         )
 
-    return {"status": "remediated" if revoked else "ignored", "rules": revoked}
+    status = "remediated" if revoked else "ignored"
+    print(f"Remediation {status}: {revoked}")
+    return {"status": status, "rules": revoked}
